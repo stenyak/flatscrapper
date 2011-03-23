@@ -104,7 +104,7 @@ function checkDeps
 function getCsv
 {
     local piso=$1
-    local cache="/tmp/idealista.$piso.tmp"
+    local cache=$(tempfile -p "idealista.")
     cachePiso $piso $cache
 
     local dormitorios=$(cat $cache |grep "[0-9]\ dormitorios" |head -n 1|sed "s/\ dormitorios//g")
@@ -134,11 +134,10 @@ then
     exit 0
 fi
 
-checkDeps html2text curl sed grep 
+checkDeps html2text curl sed grep tempfile
 for i in $*
 do
     piso=$i
-    getCsv $piso
-    #exit 0
+    getCsv $piso &
 done
-
+wait
