@@ -123,10 +123,10 @@ function getCsv
     local comunidad=$(cat $cache |grep "comunidad incluida en el alquiler" >/dev/null && echo "0" || (cat $cache |grep " eur al mes de gastos de comunidad$" | sed "s/\ eur al mes de gastos de comunidad//g"))
     if [ "$comunidad" == "" ]; then comunidad=$(cat $cache |grep -i "comunidad inclu" >/dev/null && echo "0" || getFrase "comunidad" "$(cat $cache |grep -i comunidad)"); fi
     if [ "$comunidad" == "" ]; then comunidad="n/a"; fi
-    #zona TODO
+    local distrito=$(cat $cache |grep "^distrito" |sed "s/distrito //g")
     local piscina=$(cat $cache |grep -i "piscina" >/dev/null && echo "1" || echo "0")
 
-    echo "piso=$piso, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
+    echo "piso=$piso, distrito=$distrito, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
     rm -f $cache
 }
 function checkParams
@@ -139,7 +139,7 @@ function checkParams
 }
 
 checkDeps html2text curl sed grep tempfile
-checkParams
+checkParams $*
 for i in $*
 do
     piso=$i
