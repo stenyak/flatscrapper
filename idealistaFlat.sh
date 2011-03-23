@@ -127,14 +127,19 @@ function getCsv
     local piscina=$(cat $cache |grep -i "piscina" >/dev/null && echo "1" || echo "0")
 
     echo "piso=$piso, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
+    rm -f $cache
 }
-if [ -z $1 ]
-then
-    echo "Pon el codigo de piso o pisos"
-    exit 0
-fi
+function checkParams
+{
+    if [ -z $1 ]
+    then
+        echo "Pon el codigo de piso o pisos"
+        exit 0
+    fi
+}
 
 checkDeps html2text curl sed grep tempfile
+checkParams
 for i in $*
 do
     piso=$i
