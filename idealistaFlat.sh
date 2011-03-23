@@ -185,7 +185,7 @@ function checkParams
     fi
 }
 
-checkDeps html2text curl sed grep tempfile
+checkDeps html2text curl sed grep tempfile tr
 checkErr $? "Missing dependencies. Stopping..."
 checkSettings
 checkParams $*
