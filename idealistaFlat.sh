@@ -23,25 +23,11 @@
 #
 # The latest version of this script can hopefully be obtained by emailing the author.
 #
+#### SETTINGS ####################################################################
+# some hardcoded values you can override in settings.sh file
+sitioGeneral=""  #used to narrow down google maps search
+direccionCurro="" #used to lookup public transport travel times in google maps
 
-function cachePiso
-{
-    local piso=$1
-    local cache=$2
-    local urlBase="http://www.idealista.com/pagina/inmueble?codigoinmueble="
-    curl --silent $urlBase$piso | html2text > $cache
-}
-function getFrase
-{
-    local palabra=$1
-    local frase=$2
-    echo $frase | sed "s/.*[\.\,]\([^\.\,]*$palabra[^\.\,]*\)[\.\,].*/\1/g"
-}
-function escape
-{
-    local text="$*"
-    echo $text |sed "s/\,//g;s/\"//g;s/'//g" |sed "s/^\ *\s*//g;s/\ *\s*$//g"
-}
 function setColors
 {
     export RESET="\033[00m"
@@ -98,8 +84,51 @@ function checkDeps
         checkDep $dep
         if [ $? -ne 0 ]; then error="1"; fi
     done
-
     return $error
+}
+function escapeUrl
+{
+    echo $1 |sed "s/\ /+/g;s/á/a/g;s/é/e/g;s/í/i/g;s/ó/o/g;s/ú/u/g;s/Á/A/g;s/É/E/g;s/Í/I/g;s/Ó/O/g;s/Ú/U/g"
+}
+function getFootTravelTime
+{
+    local origen="$1"
+    local destino="$2"
+    local sitioGeneral="$3"
+    # escape stuff
+    local origen=$(escapeUrl "$origen, $sitiogeneral")
+    local destino=$(escapeUrl "$destino, $sitioGeneral")
+    local url="http://maps.google.com/maps?f=d&source=s_d&saddr=$origen&daddr=$destino&hl=en&mra=ltm&dirflg=r&ttype=dep&date=03/23/11&time=7:32pm&noexp=0&noal=0&sort=def&sll=40.407091,-3.651323&sspn=0.037711,0.076904&ie=UTF8&ll=40.407222,-3.651838&spn=0.037711,0.076904&t=h&z=14&start=0"
+    echo $(( $(curl --silent "$url" | html2text |grep -m 1 --before 10000 "^Travel time" |grep "^About [0-9]" | sed "s/About //g;s/ .*//g" |tr "\n" "+")0 ))
+}
+function getTotalTravelTime
+{
+    local origen="$1"
+    local destino="$2"
+    local sitioGeneral="$3"
+    # escape stuff
+    local origen=$(escapeUrl "$origen, $sitiogeneral")
+    local destino=$(escapeUrl "$destino, $sitioGeneral")
+    local url="http://maps.google.com/maps?f=d&source=s_d&saddr=$origen&daddr=$destino&hl=en&mra=ltm&dirflg=r&ttype=dep&date=03/23/11&time=7:32pm&noexp=0&noal=0&sort=def&sll=40.407091,-3.651323&sspn=0.037711,0.076904&ie=UTF8&ll=40.407222,-3.651838&spn=0.037711,0.076904&t=h&z=14&start=0"
+    curl --silent "$url" | html2text |grep --after 1 "1. 1." |tail -n 1 |sed "s/^\s*//g"
+}
+function cachePiso
+{
+    local piso=$1
+    local cache=$2
+    local urlBase="http://www.idealista.com/pagina/inmueble?codigoinmueble="
+    curl --silent $urlBase$piso | html2text > $cache
+}
+function getFrase
+{
+    local palabra=$1
+    local frase=$2
+    echo $frase | sed "s/.*[\.\,]\([^\.\,]*$palabra[^\.\,]*\)[\.\,].*/\1/g"
+}
+function escape
+{
+    local text="$*"
+    echo $text |sed "s/\,//g;s/\"//g;s/'//g" |sed "s/^\ *\s*//g;s/\ *\s*$//g"
 }
 function getCsv
 {
@@ -125,20 +154,40 @@ function getCsv
     if [ "$comunidad" == "" ]; then comunidad="n/a"; fi
     local distrito=$(cat $cache |grep "^distrito" |sed "s/distrito //g")
     local piscina=$(cat $cache |grep -i "piscina" >/dev/null && echo "1" || echo "0")
+    local direccion=$(cat $cache | grep "^piso en" |sed "s/^piso en //g")
+    local traveltime=$(getTotalTravelTime "$direccion" "$direccionCurro" "$sitioGeneral")
+    local foottime=$(getFootTravelTime "$direccion" "$direccionCurro" "$sitioGeneral")
 
-    echo "piso=$piso, distrito=$distrito, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
+    echo "piso=$piso, tiempoACurro=$traveltime (aPata=$foottime),  distrito=$distrito, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
+    #echo "piso=$piso, tiempoACurro=$traveltime, distrito=$distrito, direccion=$direccion"
     rm -f $cache
 }
+function checkSettings
+{
+    if [ -x "settings.sh" ]
+    then
+        diff settings_example.sh settings.sh >/dev/null && checkErr 1 "Please customize your settings.sh file!"
+        . ./settings.sh
+    else
+        cp settings_example.sh settings.sh
+        chmod +x settings.sh
+        logerror "Please customize your settings.sh file!"
+        exit 1
+    fi
+}
+
 function checkParams
 {
     if [ -z $1 ]
     then
-        echo "Pon el codigo de piso o pisos"
-        exit 0
+        logerror "Pon el codigo de piso o pisos"
+        exit 1
     fi
 }
 
 checkDeps html2text curl sed grep tempfile
+checkErr $? "Missing dependencies. Stopping..."
+checkSettings
 checkParams $*
 for i in $*
 do
