@@ -165,7 +165,9 @@ function getCsv
     local metros=$(cat $cache |grep "eur\/mes, " |sed "s/.*mes, //g;s/\ .*//g")
     local planta=$(cat $cache |grep "^\(bajo\|planta\|entreplanta\)" |sed "s/bajo/0/g;s/entreplanta/0.5/g;s/planta //g;s/planta //g;s/[^0-9]*ascensor//g" |grep -v " "|head -n 1)
     local aire=$((0$(cat $cache |grep "^aire acondicionado" |sed "s/aire.*/1/g")))
+    local aval=$(cat $cache |grep -i aval >/dev/null && echo "0" || echo "1")
     local ascensor=$((0$(cat $cache |grep "con ascensor$" |sed "s/.*con ascensor/1/g" |head -n 1)))
+    local armarios=$((0$(cat $cache |grep "^[0-9] armario[s]* empotrado[s]*$" |sed "s/ .*//g")))
     local garaje=$(cat $cache |grep "plaza de garaje incluida en el precio$" |sed "s/\ plaza de garaje incluida.*//g")
     if [ "$garaje" == "" ]; then garaje="$(getFrase "araje" "$(cat $cache |grep -i garaje)")"; fi
     if [ "$garaje" == "" ]; then garaje=0; fi
@@ -185,7 +187,7 @@ function getCsv
     if [ "$garaje" != "1" ]; then totaleur=$(( $totaleur + 110 )); fi
     if [[ "$comunidad" =~ ^[0-9]+$ ]] ; then totaleur=$(( $totaleur + $comunidad )); fi
 
-    echo "$piso, $dormitorios, $banos, $metros, $planta, $aire, $ascensor, $garaje, $comision, $amueblado, $comunidad, $distrito, $piscina, $direccion, $traveltime, $foottime, $totaleur, $eurmes" >> $outfile
+    echo "$piso, $dormitorios, $banos, $armarios, $metros, $planta, $ascensor, $aire, $garaje, $comision, $aval, $amueblado, $comunidad, $distrito, $piscina, $direccion, $traveltime, $foottime, $totaleur, $eurmes" >> $outfile
     rm -f $cache
 }
 function checkSettings
@@ -216,7 +218,7 @@ checkErr $? "Missing dependencies. Stopping..."
 checkSettings
 checkParams $*
 n=0
-echo "piso, dormitorios, banos, metros, planta, aire, ascensor, garaje, comision, amueblado, comunidad, distrito, piscina, direccion, traveltime, foottime, totaleur, eurmes" > $outfile
+echo "piso, dormitorios, banos, armarios, metros, planta, ascensor, aire, garaje, comision, aval, amueblado, comunidad, distrito, piscina, direccion, traveltime, foottime, totaleur, eurmes" > $outfile
 for i in $*
 do
     piso=$i
