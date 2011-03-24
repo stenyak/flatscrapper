@@ -165,7 +165,7 @@ function getCsv
     local metros=$(cat $cache |grep "eur\/mes, " |sed "s/.*mes, //g;s/\ .*//g")
     local planta=$(cat $cache |grep "^\(bajo\|planta\|entreplanta\)" |sed "s/bajo/0/g;s/entreplanta/0.5/g;s/planta //g;s/planta //g;s/[^0-9]*ascensor//g" |grep -v " "|head -n 1)
     local aire=$((0$(cat $cache |grep "^aire acondicionado" |sed "s/aire.*/1/g")))
-    local aval=$(cat $cache |grep -i aval >/dev/null && echo "0" || echo "1")
+    local aval=$(cat $cache |grep -i aval >/dev/null && echo "1" || echo "0")
     local ascensor=$((0$(cat $cache |grep "con ascensor$" |sed "s/.*con ascensor/1/g" |head -n 1)))
     local armarios=$((0$(cat $cache |grep "^[0-9] armario[s]* empotrado[s]*$" |sed "s/ .*//g")))
     local garaje=$(cat $cache |grep "plaza de garaje incluida en el precio$" |sed "s/\ plaza de garaje incluida.*//g")
