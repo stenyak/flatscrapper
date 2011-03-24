@@ -25,8 +25,10 @@
 #
 #### SETTINGS ####################################################################
 # some hardcoded values you can override in settings.sh file
-sitioGeneral=""  #used to narrow down google maps search
-direccionCurro="" #used to lookup public transport travel times in google maps
+sitioGeneral=""
+direccionCurro=""
+outfile=""
+connections=""
 
 function setColors
 {
@@ -59,10 +61,17 @@ function logerror
     setColors
     echo -e " $RED>>>>>$WHITE Error!$RESET $msg"
 }
+function logwarning
+{
+    # Displays the desired warning message
+    local msg=$*              # warning message to display
+    echo -e " $YELLOW>>>>>$WHITE Warning!$RESET $msg"
+}
 function loginfo
 {
     # Displays the desired info message
     local msg=$*              # info message to display
+    setColors
     echo -e " $GREEN>>>>>$RESET $msg"
 }
 function checkDep
@@ -86,9 +95,10 @@ function checkDeps
     done
     return $error
 }
+escapeRegexp="s/á/a/g;s/é/e/g;s/í/i/g;s/ó/o/g;s/ú/u/g;s/Á/A/g;s/É/E/g;s/Í/I/g;s/Ó/O/g;s/Ú/U/g"
 function escapeUrl
 {
-    echo $1 |sed "s/\ /+/g;s/á/a/g;s/é/e/g;s/í/i/g;s/ó/o/g;s/ú/u/g;s/Á/A/g;s/É/E/g;s/Í/I/g;s/Ó/O/g;s/Ú/U/g"
+    echo $1 |sed "$escapeRegexp" |sed "s/\ /+/g"
 }
 function getFootTravelTime
 {
@@ -110,20 +120,21 @@ function getTotalTravelTime
     local origen=$(escapeUrl "$origen, $sitiogeneral")
     local destino=$(escapeUrl "$destino, $sitioGeneral")
     local url="http://maps.google.com/maps?f=d&source=s_d&saddr=$origen&daddr=$destino&hl=en&mra=ltm&dirflg=r&ttype=dep&date=03/23/11&time=7:32pm&noexp=0&noal=0&sort=def&sll=40.407091,-3.651323&sspn=0.037711,0.076904&ie=UTF8&ll=40.407222,-3.651838&spn=0.037711,0.076904&t=h&z=14&start=0"
-    curl --silent "$url" | html2text |grep --after 1 "1. 1." |tail -n 1 |sed "s/^\s*//g"
+    curl --silent "$url" | html2text |grep --after 1 "1. 1." |tail -n 1 |sed "s/^\s*//g;s/\s.*//g"
 }
 function cachePiso
 {
     local piso=$1
     local cache=$2
     local urlBase="http://www.idealista.com/pagina/inmueble?codigoinmueble="
+    curl --silent $urlBase$piso | html2text | sed "$escapeRegexp" > $cache
     curl --silent $urlBase$piso | html2text > $cache
 }
 function getFrase
 {
     local palabra=$1
     local frase=$2
-    echo $frase | sed "s/.*[\.\,]\([^\.\,]*$palabra[^\.\,]*\)[\.\,].*/\1/g"
+    echo $frase | sed "s/.*[\.\,]\([^\.\,]*$palabra[^\.\,]*\)[\.\,].*/\1/g;s/\"//g;s/,/-/g"
 }
 function escape
 {
@@ -133,16 +144,28 @@ function escape
 function getCsv
 {
     local piso=$1
+    local outfile=$2
+
     local cache=$(tempfile -p "idealista.")
-    cachePiso $piso $cache
+    local ok="false"
+    local eurmes=""
+    while [ "$eurmes" == "" ]
+    do
+        cachePiso $piso $cache
+        eurmes=$(cat $cache |grep "eur\/mes, " |sed "s/\ eur.*//g")
+        if [ "$eurmes" == "" ]
+        then
+            logwarning "Lost connection to flat $piso data. Retrying..."
+            logwarning "(if this problem persists, try lowering the 'connections' setting)"
+        fi
+    done
 
     local dormitorios=$(cat $cache |grep "[0-9]\ dormitorios" |head -n 1|sed "s/\ dormitorios//g")
     local banos=$(cat $cache |grep "[0-9]\ wc$" |sed "s/\ wc//g")
-    local eurmes=$(cat $cache |grep "eur\/mes, " |sed "s/\ eur.*//g")
     local metros=$(cat $cache |grep "eur\/mes, " |sed "s/.*mes, //g;s/\ .*//g")
     local planta=$(cat $cache |grep "^\(bajo\|planta\|entreplanta\)" |sed "s/bajo/0/g;s/entreplanta/0.5/g;s/planta //g;s/planta //g;s/[^0-9]*ascensor//g" |grep -v " "|head -n 1)
     local aire=$((0$(cat $cache |grep "^aire acondicionado" |sed "s/aire.*/1/g")))
-    local ascensor=$((0$(cat $cache |grep "con ascensor" |sed "s/.*con ascensor/1/g" |head -n 1)))
+    local ascensor=$((0$(cat $cache |grep "con ascensor$" |sed "s/.*con ascensor/1/g" |head -n 1)))
     local garaje=$(cat $cache |grep "plaza de garaje incluida en el precio$" |sed "s/\ plaza de garaje incluida.*//g")
     if [ "$garaje" == "" ]; then garaje="$(getFrase "araje" "$(cat $cache |grep -i garaje)")"; fi
     if [ "$garaje" == "" ]; then garaje=0; fi
@@ -150,16 +173,19 @@ function getCsv
     local comision=$(echo $piso |grep "VW" >/dev/null && echo "0" || (cat $cache |grep "sin comisiones" >/dev/null && echo "0" || echo "1"))
     local amueblado=$(cat $cache |grep amueblado >/dev/null && echo "1" || echo "0")
     local comunidad=$(cat $cache |grep "comunidad incluida en el alquiler" >/dev/null && echo "0" || (cat $cache |grep " eur al mes de gastos de comunidad$" | sed "s/\ eur al mes de gastos de comunidad//g"))
-    if [ "$comunidad" == "" ]; then comunidad=$(cat $cache |grep -i "comunidad inclu" >/dev/null && echo "0" || getFrase "comunidad" "$(cat $cache |grep -i comunidad)"); fi
+    if [ "$comunidad" == "" ]; then comunidad=$(cat $cache |grep -i "comunidad inclu" >/dev/null && echo "0" || getFrase "omunidad" "$(cat $cache |grep -i comunidad)"); fi
     if [ "$comunidad" == "" ]; then comunidad="n/a"; fi
     local distrito=$(cat $cache |grep "^distrito" |sed "s/distrito //g")
     local piscina=$(cat $cache |grep -i "piscina" >/dev/null && echo "1" || echo "0")
-    local direccion=$(cat $cache | grep "^piso en" |sed "s/^piso en //g")
+    local direccion=$(cat $cache | grep "^piso en" |sed "s/^piso en //g;s/,//g")
     local traveltime=$(getTotalTravelTime "$direccion" "$direccionCurro" "$sitioGeneral")
     local foottime=$(getFootTravelTime "$direccion" "$direccionCurro" "$sitioGeneral")
+    local totaleur=$eurmes
+    if [ "$comision" == "1" ]; then totaleur=$(( $totaleur + ($eurmes*118/100/12) )); fi
+    if [ "$garaje" != "1" ]; then totaleur=$(( $totaleur + 110 )); fi
+    if [[ "$comunidad" =~ ^[0-9]+$ ]] ; then totaleur=$(( $totaleur + $comunidad )); fi
 
-    echo "piso=$piso, tiempoACurro=$traveltime (aPata=$foottime),  distrito=$distrito, m2=$metros, eur/mes=$eurmes, comision=$comision, comunidad=$comunidad, planta=$planta, ascensor=$ascensor, dormitorios=$dormitorios, baños=$banos, amueblado=$amueblado, aire=$aire, garaje=$garaje, piscina=$piscina"
-    #echo "piso=$piso, tiempoACurro=$traveltime, distrito=$distrito, direccion=$direccion"
+    echo "$piso, $dormitorios, $banos, $metros, $planta, $aire, $ascensor, $garaje, $comision, $amueblado, $comunidad, $distrito, $piscina, $direccion, $traveltime, $foottime, $totaleur, $eurmes" >> $outfile
     rm -f $cache
 }
 function checkSettings
@@ -189,9 +215,21 @@ checkDeps html2text curl sed grep tempfile tr
 checkErr $? "Missing dependencies. Stopping..."
 checkSettings
 checkParams $*
+n=0
+echo "piso, dormitorios, banos, metros, planta, aire, ascensor, garaje, comision, amueblado, comunidad, distrito, piscina, direccion, traveltime, foottime, totaleur, eurmes" > $outfile
 for i in $*
 do
     piso=$i
-    getCsv $piso &
+    if [ "$(($n % $connections))" -eq "0" ]
+    then
+        wait
+        loginfo "Processing flat $n ($(($# - $n)) remaining)"
+    fi
+    n=$(($n+1))  
+    getCsv $piso $outfile &
 done
 wait
+
+cat $outfile | sort > $outfile.tmp
+mv $outfile.tmp $outfile
+loginfo "All your flats information is stored at $outfile"
